@@ -1,4 +1,4 @@
 #!/bin/bash
-./deprep.py requirements.txt extras.txt license-report.csv
+./deprep.py requirements.txt overrides.txt extras.txt license-report.csv
 
 

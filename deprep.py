@@ -13,6 +13,15 @@ env = Env()
 env.read_env()
 github_api = Github(env("GITHUB_API_TOKEN"))
 
+def parse_overrides(f):
+    d = {}
+    for s in f:
+        s = s.strip()
+        logging.info(f"Override {s}")
+        k, v = s.split()
+        d[k] = v
+    return d
+
 parse_requirement_re = re.compile("^(.*)==(.*)$")
 
 def parse_requirement(s):
@@ -25,11 +34,13 @@ def parse_requirement(s):
         raise ValueError(f"Failed to parse {s}")
 
 
-def get_source_url_from_pypi(name):
+def get_source_url_from_pypi(name, overrides):
     obj = requests.get(f"https://pypi.org/pypi/{name}/json").json()
     urls = obj["info"]["project_urls"]
 
-    if (url := urls.get("Source")) and "github.com" in url:
+    if name in overrides:
+        return overrides[name]
+    elif (url := urls.get("Source")) and "github.com" in url:
         return url
     elif (url := urls.get("Code")) and "github.com" in url:
         return url
@@ -47,12 +58,13 @@ def get_github_license(url):
     return license.license.name, license.url
 
 
-def process_requirement(s):
+def process_requirement(s, overrides):
     name, version = parse_requirement(s)
-    source_url = get_source_url_from_pypi(name)
+    source_url = get_source_url_from_pypi(name, overrides)
     license, license_url = get_github_license(source_url)
     ret = locals()
     del ret["s"]
+    del ret["overrides"]
     return ret
 
 
@@ -64,10 +76,12 @@ def process_extra(s):
     del ret["s"]
     return ret
 
+def main(requirements, overrides, extras, output):
+    with open(overrides) as f:
+        overrides = parse_overrides(f)
 
-def main(requirements, extras, output):
     with open(requirements) as f:
-        items = [process_requirement(s) for s in f]
+        items = [process_requirement(s, overrides) for s in f]
 
     with open(extras) as f:
         items.extend(process_extra(s) for s in f)
