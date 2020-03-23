@@ -16,6 +16,7 @@ github_api = Github(env("GITHUB_API_TOKEN"))
 parse_requirement_re = re.compile("^(.*)==(.*)$")
 
 def parse_requirement(s):
+    s = s.strip()
     logging.info(f"Parsing {s}")
     m = parse_requirement_re.search(s)
     if m:
@@ -73,6 +74,7 @@ def main(requirements, extras, output):
 
     with open(output, "w") as f:
         writer = csv.DictWriter(f, ("name", "version", "source_url", "license", "license_url"))
+        writer.writeheader()
         writer.writerows(items)
 
 if __name__ == "__main__":
