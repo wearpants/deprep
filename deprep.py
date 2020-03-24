@@ -7,11 +7,11 @@ import urllib.parse
 import logging
 import requests
 from environs import Env
-from github import Github
+import github
 
 env = Env()
 env.read_env()
-github_api = Github(env("GITHUB_API_TOKEN"))
+github_api = github.Github(env("GITHUB_API_TOKEN"))
 
 def parse_overrides(f):
     d = {}
@@ -22,14 +22,21 @@ def parse_overrides(f):
         d[k] = v
     return d
 
-parse_requirement_re = re.compile("^(.*)==(.*)$")
+parse_requirement_re = re.compile("^(.*)==(.*?)$")
 
 def parse_requirement(s):
     s = s.strip()
+    if s.startswith("-e"):
+        logging.warning(f"Skipped {s}")
+        return None, None
+
     logging.info(f"Parsing {s}")
-    m = parse_requirement_re.search(s)
+    x = s.split(";")[0]
+    m = parse_requirement_re.search(x)
     if m:
-        return m.groups()
+        ret = m.group(1, 2)
+        logging.info(f"Extracted {ret}")
+        return ret
     else:
         raise ValueError(f"Failed to parse {s}")
 
@@ -40,26 +47,38 @@ def get_source_url_from_pypi(name, overrides):
 
     if name in overrides:
         return overrides[name]
-    elif (url := urls.get("Source")) and "github.com" in url:
-        return url
-    elif (url := urls.get("Code")) and "github.com" in url:
-        return url
-    elif (url := urls.get("Homepage")) and "github.com" in url:
-        return url
-    else:
-        logging.warning(f"Couldn't find source URL for {name} in {urls!r}")
+
+    if urls:
+        for x in ("Source", "Code", "Source Code", "Homepage", "Repository"):
+            url = urls.get(x)
+            if url and url.startswith("https://github.com"):
+                return url
+
+    logging.warning(f"Couldn't find source URL for {name} in {urls!r}")
+    return None
 
 
 def get_github_license(url):
     if not url:
         return None, None
     u = urllib.parse.urlsplit(str(url))
-    license = github_api.get_repo(u.path.strip("/")).get_license()
+    repo_name = "/".join(u.path.strip("/").split("/", 2)[:2])
+    logging.info(f"Retrieving repo {repo_name}")
+    repo = github_api.get_repo(repo_name)
+    try:
+        license = repo.get_license()
+    except github.GithubException:
+        logging.warning(f"Couldn't retrieve license for {repo_name}")
+        return None, None
     return license.license.name, license.url
 
 
 def process_requirement(s, overrides):
     name, version = parse_requirement(s)
+    if not name:
+        logging.warning(f"Ignored {s.strip()}")
+        return {}
+
     source_url = get_source_url_from_pypi(name, overrides)
     license, license_url = get_github_license(source_url)
     ret = locals()
@@ -76,7 +95,8 @@ def process_extra(s):
     del ret["s"]
     return ret
 
-def main(requirements, overrides, extras, output):
+
+def main(requirements, overrides, extras, manual, output):
     with open(overrides) as f:
         overrides = parse_overrides(f)
 
@@ -86,10 +106,14 @@ def main(requirements, overrides, extras, output):
     with open(extras) as f:
         items.extend(process_extra(s) for s in f)
 
+    with open(manual) as f:
+        reader = csv.DictReader(f)
+        items.extend(reader)
+
     with open(output, "w") as f:
         writer = csv.DictWriter(f, ("name", "version", "source_url", "license", "license_url"))
         writer.writeheader()
-        writer.writerows(items)
+        writer.writerows(i for i in items if i)
 
 if __name__ == "__main__":
     logging.basicConfig(level="INFO")
