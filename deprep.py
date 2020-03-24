@@ -51,7 +51,7 @@ def get_source_url_from_pypi(name, overrides):
         return overrides[name]
 
     if urls:
-        for x in ("Source", "Code", "Source Code", "Homepage", "Repository"):
+        for x in ("Source", "Code", "Source Code", "Homepage", "Repository", "Download", "source"):
             url = urls.get(x)
             if url and github_url_re.search(url):
                 return url
@@ -83,6 +83,11 @@ def process_requirement(s, overrides):
 
     source_url = get_source_url_from_pypi(name, overrides)
     license, license_url = get_github_license(source_url)
+
+    if not license:
+        logging.warning(f"Ignored {s.strip()}")
+        return {}
+
     ret = locals()
     del ret["s"]
     del ret["overrides"]
@@ -118,7 +123,7 @@ def main(requirements, overrides, extras, manual, output):
         writer.writerows(i for i in items if i)
 
 if __name__ == "__main__":
-    logging.basicConfig(level="INFO")
+    logging.basicConfig(level="WARNING")
     main(*sys.argv[1:])
 
 
