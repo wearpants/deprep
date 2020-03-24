@@ -41,6 +41,8 @@ def parse_requirement(s):
         raise ValueError(f"Failed to parse {s}")
 
 
+github_url_re = re.compile("^https?://github.com.*")
+
 def get_source_url_from_pypi(name, overrides):
     obj = requests.get(f"https://pypi.org/pypi/{name}/json").json()
     urls = obj["info"]["project_urls"]
@@ -51,7 +53,7 @@ def get_source_url_from_pypi(name, overrides):
     if urls:
         for x in ("Source", "Code", "Source Code", "Homepage", "Repository"):
             url = urls.get(x)
-            if url and url.startswith("https://github.com"):
+            if url and github_url_re.search(url):
                 return url
 
     logging.warning(f"Couldn't find source URL for {name} in {urls!r}")
@@ -100,15 +102,15 @@ def main(requirements, overrides, extras, manual, output):
     with open(overrides) as f:
         overrides = parse_overrides(f)
 
+    with open(manual) as f:
+        reader = csv.DictReader(f)
+        items = list(reader)
+
     with open(requirements) as f:
-        items = [process_requirement(s, overrides) for s in f]
+        items.extend(process_requirement(s, overrides) for s in f)
 
     with open(extras) as f:
         items.extend(process_extra(s) for s in f)
-
-    with open(manual) as f:
-        reader = csv.DictReader(f)
-        items.extend(reader)
 
     with open(output, "w") as f:
         writer = csv.DictWriter(f, ("name", "version", "source_url", "license", "license_url"))
