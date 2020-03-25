@@ -22,26 +22,20 @@ def parse_overrides(f):
         d[k] = v
     return d
 
-parse_requirement_re = re.compile("^(.*)==(.*?)$")
 
 def parse_requirement(s):
     s = s.strip()
     if s.startswith("-e"):
         logging.warning(f"Skipped {s}")
-        return None, None
+        return None
 
     logging.info(f"Parsing {s}")
-    x = s.split(";")[0]
-    m = parse_requirement_re.search(x)
-    if m:
-        ret = m.group(1, 2)
-        logging.info(f"Extracted {ret}")
-        return ret
-    else:
-        raise ValueError(f"Failed to parse {s}")
-
+    ret = s.split("=")[0]
+    logging.info(f"Extracted {ret}")
+    return ret
 
 github_url_re = re.compile("^https?://github.com.*")
+
 
 def get_source_url_from_pypi(name, overrides):
     obj = requests.get(f"https://pypi.org/pypi/{name}/json").json()
@@ -76,7 +70,7 @@ def get_github_license(url):
 
 
 def process_requirement(s, overrides):
-    name, version = parse_requirement(s)
+    name = parse_requirement(s)
     if not name:
         logging.warning(f"Ignored {s.strip()}")
         return {}
@@ -95,7 +89,7 @@ def process_requirement(s, overrides):
 
 
 def process_extra(s):
-    name = version = ""
+    name = ""
     source_url = s.strip()
     license, license_url = get_github_license(source_url)
     ret = locals()
@@ -118,7 +112,7 @@ def main(requirements, overrides, extras, manual, output):
         items.extend(process_extra(s) for s in f)
 
     with open(output, "w") as f:
-        writer = csv.DictWriter(f, ("name", "version", "source_url", "license", "license_url"))
+        writer = csv.DictWriter(f, ("name", "source_url", "license", "license_url"))
         writer.writeheader()
         writer.writerows(i for i in items if i)
 
